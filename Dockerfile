@@ -39,7 +39,10 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV COREPACK_HOME=/opt/corepack
 WORKDIR /app
 COPY package.json ./
-RUN corepack enable \
+# The corepack bundled with node:22 images predates pnpm 12's binary layout and
+# cannot launch it, so install a corepack that can before activating pnpm.
+RUN npm install -g corepack@0.36.0 \
+  && corepack enable \
   && corepack prepare --activate \
   && chmod -R a+rX "$COREPACK_HOME"
 
