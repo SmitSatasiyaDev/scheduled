@@ -52,9 +52,9 @@ Two database options — pick one before editing `.env`:
   local database container.
 
 Changed the code, or the published images aren't public yet? Use
-`docker-compose.build.yml` instead of `docker-compose.yml` — it builds both
-images from source locally. It needs a full `git clone` (not just the two
-files above), since it builds from the repo's `Dockerfile`/`Dockerfile.worker`.
+`docker-compose.build.yml` instead of `docker-compose.yml` — it builds the
+image from source locally. It needs a full `git clone` (not just the two
+files above), since it builds from the repo's `Dockerfile`.
 
 ### A1 — Bundled Postgres
 

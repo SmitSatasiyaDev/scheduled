@@ -4,25 +4,50 @@ Official docs: [Docker](https://docs.docker.com/) · [Docker Compose](https://do
 
 ## Images
 
-Two images are built from this repo:
+One image is built from this repo (`Dockerfile`), published as
+`ghcr.io/stack256org/schduled`. It fills three roles, picked by the command the
+container is started with:
 
-| Image | Dockerfile | Published as | Purpose |
-|---|---|---|---|
-| `web` | `Dockerfile` | `ghcr.io/stack256org/schduled` | The Next.js server (`output: 'standalone'`) — serves traffic once the database is migrated |
-| `worker` | `Dockerfile.worker` | `ghcr.io/stack256org/schduled-worker` | The background job processor (pg-boss) — emails, reminders, calendar sync |
+| Role | Command | Purpose |
+|---|---|---|
+| web | `pnpm start` | The Next.js server — serves traffic once the database is migrated |
+| worker | `pnpm worker:start` | The background job processor (pg-boss) — emails, reminders, calendar sync |
+| migrate | `pnpm db:migrate:docker` | Applies pending migrations, then exits |
 
-Both run as a non-root `app` user, share the same `.env`, and connect to the
-same PostgreSQL database — that's the only thing they share. No shared
-filesystem is required between them (local file storage, if used, only
-needs to be on the `web` container).
+The image runs as a non-root `app` user. The compose files run each role as its
+own service from the same image, sharing the same `.env` and the same
+PostgreSQL database. No shared filesystem is required between them (local file
+storage, if used, only needs to be on the `web` container).
+
+### One container (Dokploy, Coolify, `docker run`)
+
+With **no command**, the image's entrypoint (`scripts/docker-entrypoint.sh`)
+applies pending migrations, then runs the web server and exactly one worker in
+the same container. Every new version you select therefore migrates itself.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SCHDULED_ROLE` | `all` | `all` = migrate + web + worker. Or `app`, `worker`, `migrate` to run one role. |
+| `SCHDULED_RUN_MIGRATIONS` | `true` for `all`/`migrate`, else `false` | Set `false` if your managed database user may not run DDL. |
+
+- Leave the platform's command field **blank**. An explicit command (for
+  example `pnpm start`) overrides the entrypoint: no migrations, no worker.
+- Mount a volume at `/app/uploads`, or set `STORAGE_DRIVER=s3`. The container
+  logs `[entrypoint] WARNING: /app/uploads is not a mounted volume` at boot
+  when it is missing.
+- Run **one** container in role `all`; do not scale it. If the web server or
+  the worker dies, the container exits so the platform restarts it.
+- Troubleshooting: a Server Components render error right after a release, or
+  no email at all, means migrations or the worker did not run — usually a
+  command is set. `unknown SCHDULED_ROLE` with exit code 64 is a typo.
 
 ## Three compose files — pick one
 
 | File | Images | Bundled Postgres | Use when |
 |---|---|---|---|
-| `docker-compose.yml` | **pulled** from `ghcr.io/stack256org/schduled` and `schduled-worker` | yes | Recommended default — no local build, works on a small VPS |
+| `docker-compose.yml` | **pulled** from `ghcr.io/stack256org/schduled` | yes | Recommended default — no local build, works on a small VPS |
 | `docker-compose.external-db.yml` | pulled | no | You already have a Postgres (managed service or your own) |
-| `docker-compose.build.yml` | **built** from `Dockerfile` / `Dockerfile.worker` on your machine | yes | You changed the code, or no published image is available yet |
+| `docker-compose.build.yml` | **built** from `Dockerfile` on your machine | yes | You changed the code, or no published image is available yet |
 
 Only one of the three is ever run at a time.
 
@@ -95,8 +120,7 @@ docker compose -f docker-compose.build.yml up -d
 ```
 
 Same services and volumes as `docker-compose.yml`, but `migrate`/`web`/
-`worker` are each built locally from `Dockerfile`/`Dockerfile.worker` instead
-of pulled. Rebuild after pulling new code with
+`worker` share one image built locally from `Dockerfile` instead of pulled. Rebuild after pulling new code with
 `docker compose -f docker-compose.build.yml build`.
 
 ### Volumes
@@ -130,36 +154,33 @@ commands use this exact name.
   retry if your external database isn't reachable yet.
 - `web`: hits its own `/api/health` endpoint, which does a real `SELECT 1`
   against Postgres — not just "is the process alive."
-- `worker`: has a `HEALTHCHECK` in `Dockerfile.worker` that checks a
-  heartbeat file the worker writes every 15 seconds
-  (`scripts/worker.ts`) — this catches a wedged event loop that a plain
+- `worker`: checks a heartbeat file the worker writes every 15 seconds
+  (`scripts/worker.ts`, via `scripts/healthcheck.mjs`) — this catches a wedged event loop that a plain
   "is the process running" check would miss.
 
 ## Building images directly (without compose)
 
 ```bash
-docker build -t schduled-web -f Dockerfile .
-docker build -t schduled-worker -f Dockerfile.worker .
+docker build -t schduled -f Dockerfile .
 ```
 
 To embed the git commit in `/api/version`:
 ```bash
 docker build \
   --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
-  -t schduled-web -f Dockerfile .
+  -t schduled -f Dockerfile .
 ```
 `.git` itself is excluded from the build context (`.dockerignore`), so the
 SHA has to be passed explicitly — it isn't read from inside the image.
 
 ## Where published images come from
 
-`.github/workflows/release.yml` builds and pushes both images
+`.github/workflows/release.yml` builds and pushes the image
 (`linux/amd64` + `linux/arm64`) to GitHub Container Registry on every push to
 `main` that passes CI:
 
-- Every push publishes `ghcr.io/stack256org/schduled:main`,
-  `ghcr.io/stack256org/schduled-worker:main`, and matching
-  `sha-<short>` tags.
+- Every push publishes `ghcr.io/stack256org/schduled:main` and a matching
+  `sha-<short>` tag.
 - A push where `package.json`'s `version` has no matching `v<version>` git
   tag yet is treated as a release: it additionally publishes the version
   ladder (`X`, `X.Y`, `X.Y.Z`, `latest`), creates the `v<version>` tag, and
