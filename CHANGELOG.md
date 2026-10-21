@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/). Every
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
 ### Changed
 
 - **One image instead of two.** The web server, the worker and the migration job now
@@ -20,6 +22,21 @@ and this project follows [Semantic Versioning](https://semver.org/). Every
   `schduled-worker`; existing tags stay pullable.
 - `scripts/migrate.ts` takes a `pg_advisory_lock`, so two overlapping deploys queue instead
   of racing to apply the same migration.
+- **Dependencies updated** to current stable releases, including Next.js 16.4, React 19.3,
+  TypeScript 7, `googleapis` 186, `motion` 14, `files-sdk` 3 and `nodemailer` 10. `better-auth`
+  stays on the 1.6 line (1.7 needs an account-schema migration). Package manager is now
+  pnpm 12.14.0; the `Dockerfile` installs corepack 0.36 so it can activate it.
+
+### Fixed
+
+- Dev console error "Encountered a script tag while rendering React component" from the
+  theme provider.
+
+### Documentation
+
+- New "File storage and uploads" section in `docs/self-hosting/installation.md`: which
+  deployments keep uploads automatically (Compose) and which need a volume or S3/R2 set up by
+  hand (Dokploy Application, other Docker platforms, manual installs).
 
 ### Added
 

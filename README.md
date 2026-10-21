@@ -48,17 +48,17 @@ See **[SELF-HOSTING.md](./SELF-HOSTING.md)** for the full guide, and
 curl -O https://raw.githubusercontent.com/stack256org/scheduled/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/stack256org/scheduled/main/.env.docker.example
 # set APP_SECRET, APP_URL, and (recommended) INITIAL_ADMIN_EMAIL
-IMAGE_TAG=0.1.0 docker compose up -d
+IMAGE_TAG=0.2.0 docker compose up -d
 ```
 
 This pulls a prebuilt, published image (multi-arch: Intel + ARM) rather than
 building on your server. Pin a version in production, because `latest`
 moves with every release — available tags are `latest`, the `0` /
-`0.1` / `0.1.0` ladder, `main` (rebuilt on every change, expect
+`0.2` / `0.2.0` ladder, `main` (rebuilt on every change, expect
 rough edges), and a fixed `sha-<short>` per build:
 
 ```bash
-docker pull ghcr.io/stack256org/schduled:0.1.0
+docker pull ghcr.io/stack256org/schduled:0.2.0
 ```
 <!-- END GENERATED: quick-start -->
 
@@ -325,7 +325,7 @@ error goes to the server log, never into the response.
 
 ```bash
 curl http://localhost:3000/api/version
-# {"name":"schduled","version":"0.1.0","gitSha":"a1b2c3d"}
+# {"name":"schduled","version":"0.2.0","gitSha":"a1b2c3d"}
 ```
 
 `gitSha` is `"unknown"` unless the image was built with
