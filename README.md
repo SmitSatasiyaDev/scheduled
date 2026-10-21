@@ -173,6 +173,11 @@ clone directory), so a deploy tool that doesn't keep the compose project name
 stable can't silently create a new, empty volume and orphan your data. They
 survive `down`, `pull`, `build`, and `up -d` — only `down -v` destroys them.
 
+On Compose this is automatic. Dokploy Applications, other Docker platforms and
+non-Docker installs need a persistent `/app/uploads` (or `uploads/`) set up by
+hand, or S3/R2 — see
+[File storage and uploads](./docs/self-hosting/installation.md#file-storage-and-uploads-both-paths).
+
 ### Healthchecks
 
 - `web` hits its own `GET /api/health`, which runs a real query against
@@ -228,6 +233,11 @@ Setting an explicit command such as `pnpm start` **overrides the entrypoint**:
 no migrations and no worker. Run exactly one container in role `all` — two
 workers can double-process jobs.
 
+**Dokploy (Application/Dockerfile):** add a persistent **Volume** named
+`schduled_uploads` mounted at `/app/uploads` once by hand, or uploaded avatars
+and logos are lost on redeploy. Steps in
+[docs/self-hosting/docker.md](./docs/self-hosting/docker.md#dokploy-persistent-uploads-volume-one-time-setup).
+
 **Separate services (Kubernetes, Swarm, ECS).** Run the same image three times:
 
 | Service | Command | Notes |
@@ -240,6 +250,9 @@ On the default `local` storage setting, mount a permanent volume at
 `/app/uploads` on the container serving `web` (in role `all`, that is the
 only container). Without it, uploads vanish on the next redeploy — the
 container logs a warning at boot when the mount is missing. S3 and R2 need none.
+Every deployment method — what is automatic and what you set up yourself,
+including manual installs — is in
+[File storage and uploads](./docs/self-hosting/installation.md#file-storage-and-uploads-both-paths).
 
 ### A plain server (no Docker)
 

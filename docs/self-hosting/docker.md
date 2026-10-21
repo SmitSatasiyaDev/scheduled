@@ -34,12 +34,85 @@ the same container. Every new version you select therefore migrates itself.
   example `pnpm start`) overrides the entrypoint: no migrations, no worker.
 - Mount a volume at `/app/uploads`, or set `STORAGE_DRIVER=s3`. The container
   logs `[entrypoint] WARNING: /app/uploads is not a mounted volume` at boot
-  when it is missing.
+  when it is missing. On Dokploy this is a one-time manual step — see
+  [Dokploy: persistent uploads volume](#dokploy-persistent-uploads-volume-one-time-setup).
 - Run **one** container in role `all`; do not scale it. If the web server or
   the worker dies, the container exits so the platform restarts it.
 - Troubleshooting: a Server Components render error right after a release, or
   no email at all, means migrations or the worker did not run — usually a
   command is set. `unknown SCHDULED_ROLE` with exit code 64 is a typo.
+
+### Dokploy: persistent uploads volume (one-time setup)
+
+This applies when you deploy on Dokploy as an **Application** from the image or
+`Dockerfile` — a single container in role `all`. In that mode Dokploy does not
+read this repo's compose files, so the `uploads` volume they declare is never
+created. You add it once by hand, in the Dokploy UI. For every deployment
+method side by side (what is automatic and what is manual), see
+[File storage and uploads](./installation.md#file-storage-and-uploads-both-paths).
+
+If you instead deploy with Dokploy's **Docker Compose** type using
+`docker-compose.yml`, skip this: the compose file already declares and mounts
+the volume (see [Volumes](#volumes) below).
+
+**Why it is required.** With the default `local` storage driver, the app saves
+uploaded avatars and branding logos to `/app/uploads` inside the container. A
+container's own filesystem is thrown away when Dokploy replaces it on a
+redeploy, so without a persistent volume mounted there, every uploaded file is
+lost on the next deploy. The database keeps pointing at
+`/api/files/...` URLs, so the images simply start returning 404. The container
+logs `[entrypoint] WARNING: /app/uploads is not a mounted volume` at boot while
+the mount is missing. You don't need any of this with `STORAGE_DRIVER=s3` or
+`r2`.
+
+**Steps**
+
+1. Open the application in Dokploy.
+2. Go to **Advanced → Volumes / Mounts → Add**. (Menu labels can differ
+   slightly between Dokploy versions.)
+3. Choose **Volume** — not **Bind**.
+4. Set the volume name to `schduled_uploads`.
+5. Set the mount path to `/app/uploads`.
+6. Save, then deploy the application.
+
+- **Mount path:** it must be exactly `/app/uploads`. That is where the app
+  writes (`process.cwd()` is `/app` in the image) and where the entrypoint
+  checks for a mount.
+- **Volume name:** `schduled_uploads` matches the name pinned in every compose
+  file and used by the [Backup](./backup.md) and [Restore](./restore.md) guides,
+  so the same data is reused if you ever switch between Dokploy and Compose on
+  one host. Any name works as long as it is fixed once and never changed — a new
+  name means a new, empty volume.
+- **Why Volume, not Bind:** the image runs as non-root uid 1001 and creates
+  `/app/uploads` owned by that user. A new Docker named volume inherits that
+  ownership. A bind-mounted host directory is usually root-owned, which makes
+  every upload fail with `EACCES` unless you `chown -R 1001:1001` it yourself.
+  (The compose files' `init-uploads` service does that chown for named volumes
+  created before the image went non-root; the single-container setup has no
+  equivalent.)
+
+**Check it worked.** After the deploy, the boot log should no longer show the
+`not a mounted volume` warning, and `docker volume ls | grep uploads` on the
+host should list `schduled_uploads`. Upload an avatar, redeploy, and confirm it
+still loads.
+
+**Already deployed without a volume?** Existing uploads live only in the
+running container, and mounting a new empty volume over `/app/uploads` hides
+them. Copy them out *before* the deploy that adds the mount, then restore them
+into the volume afterwards:
+
+```bash
+# Before adding the volume — on the Dokploy host, with the app still running
+docker cp <container>:/app/uploads/. ./uploads-backup
+
+# After the volume exists and the app has been deployed once
+docker run --rm -v schduled_uploads:/data -v "$(pwd)/uploads-backup":/backup \
+  alpine sh -c "cp -a /backup/. /data/ && chown -R 1001:1001 /data"
+```
+
+Take care not to delete the Dokploy application's volumes, and never rename the
+volume — either one orphans or destroys the uploaded files. For ongoing
+backups see the [Backup guide](./backup.md).
 
 ## Three compose files — pick one
 
@@ -135,6 +208,10 @@ and `chown`s the `uploads` volume to the app's non-root uid (1001), then
 exits. It exists so a volume created before an image update went non-root
 doesn't silently start failing uploads with `EACCES` — on a fresh volume it's
 a no-op, so it's safe to run on every `up`.
+
+Compose gives you this volume automatically; other platforms, manual installs
+and S3/R2 are covered in
+[File storage and uploads](./installation.md#file-storage-and-uploads-both-paths).
 
 The volume name is pinned in every compose file (`name: schduled_uploads`),
 so it's always `schduled_uploads` regardless of your clone directory name.
